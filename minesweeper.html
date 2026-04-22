@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Minesweeper</title>
+<style>
+  body {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    background: #c0c0c0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+  }
+  .frame {
+    background: #c0c0c0;
+    padding: 10px;
+    border: 3px solid;
+    border-color: #fff #808080 #808080 #fff;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #c0c0c0;
+    border: 2px solid;
+    border-color: #808080 #fff #fff #808080;
+    padding: 4px 6px;
+    margin-bottom: 6px;
+  }
+  .counter {
+    background: #000;
+    color: #f00;
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    font-size: 22px;
+    padding: 2px 6px;
+    min-width: 48px;
+    text-align: center;
+    letter-spacing: 2px;
+  }
+  .face {
+    width: 36px;
+    height: 36px;
+    font-size: 22px;
+    background: #c0c0c0;
+    border: 3px solid;
+    border-color: #fff #808080 #808080 #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+  }
+  .face:active {
+    border-color: #808080 #fff #fff #808080;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(9, 28px);
+    grid-template-rows: repeat(9, 28px);
+    border: 3px solid;
+    border-color: #808080 #fff #fff #808080;
+  }
+  .cell {
+    width: 28px;
+    height: 28px;
+    background: #c0c0c0;
+    border: 3px solid;
+    border-color: #fff #808080 #808080 #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    font-size: 18px;
+    cursor: pointer;
+    user-select: none;
+    box-sizing: border-box;
+  }
+  .cell.revealed {
+    background: #bdbdbd;
+    border: 1px solid #7b7b7b;
+  }
+  .cell.mine-hit { background: #f00; }
+  .cell.wrong-flag { background: #f66; }
+  .n1 { color: #0000ff; }
+  .n2 { color: #008000; }
+  .n3 { color: #ff0000; }
+  .n4 { color: #000080; }
+  .n5 { color: #800000; }
+  .n6 { color: #008080; }
+  .n7 { color: #000000; }
+  .n8 { color: #808080; }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div class="header">
+      <div class="counter" id="mine-counter">010</div>
+      <button class="face" id="face" type="button">🙂</button>
+      <div class="counter" id="timer">000</div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+<script>
+(() => {
+  const ROWS = 9, COLS = 9, MINES = 10;
+  const gridEl = document.getElementById('grid');
+  const mineCounterEl = document.getElementById('mine-counter');
+  const timerEl = document.getElementById('timer');
+  const faceEl = document.getElementById('face');
+
+  let board, cellEls, firstClick, gameOver, flagCount, revealedCount, timer, seconds;
+
+  const fmt = (n) => {
+    const s = n < 0 ? '-' + String(Math.min(99, -n)).padStart(2, '0')
+                    : String(Math.min(999, n)).padStart(3, '0');
+    return s;
+  };
+
+  const neighbors = (r, c) => {
+    const out = [];
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) out.push([nr, nc]);
+      }
+    }
+    return out;
+  };
+
+  const placeMines = (safeR, safeC) => {
+    const forbidden = new Set([`${safeR},${safeC}`, ...neighbors(safeR, safeC).map(([r,c]) => `${r},${c}`)]);
+    const candidates = [];
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (!forbidden.has(`${r},${c}`)) candidates.push([r, c]);
+
+    for (let i = 0; i < MINES; i++) {
+      const j = i + Math.floor(Math.random() * (candidates.length - i));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      const [r, c] = candidates[i];
+      board[r][c].mine = true;
+    }
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (board[r][c].mine) continue;
+        board[r][c].count = neighbors(r, c).filter(([nr, nc]) => board[nr][nc].mine).length;
+      }
+    }
+  };
+
+  const reveal = (r, c) => {
+    const cell = board[r][c];
+    if (cell.state !== 'covered') return;
+    cell.state = 'revealed';
+    revealedCount++;
+    renderCell(r, c);
+
+    if (cell.mine) {
+      loseGame(r, c);
+      return;
+    }
+    if (cell.count === 0) {
+      for (const [nr, nc] of neighbors(r, c)) reveal(nr, nc);
+    }
+  };
+
+  const renderCell = (r, c) => {
+    const cell = board[r][c];
+    const el = cellEls[r][c];
+    el.className = 'cell';
+    el.textContent = '';
+
+    if (cell.state === 'revealed') {
+      el.classList.add('revealed');
+      if (cell.mine) {
+        el.textContent = '💣';
+        if (cell.hit) el.classList.add('mine-hit');
+      } else if (cell.count > 0) {
+        el.textContent = cell.count;
+        el.classList.add('n' + cell.count);
+      }
+    } else if (cell.state === 'flagged') {
+      el.textContent = '🚩';
+      if (cell.wrongFlag) el.classList.add('wrong-flag');
+    }
+  };
+
+  const toggleFlag = (r, c) => {
+    const cell = board[r][c];
+    if (cell.state === 'revealed') return;
+    if (cell.state === 'covered') {
+      cell.state = 'flagged';
+      flagCount++;
+    } else {
+      cell.state = 'covered';
+      flagCount--;
+    }
+    mineCounterEl.textContent = fmt(MINES - flagCount);
+    renderCell(r, c);
+  };
+
+  const chord = (r, c) => {
+    const cell = board[r][c];
+    if (cell.state !== 'revealed' || cell.count === 0) return;
+    const nbrs = neighbors(r, c);
+    const flaggedCount = nbrs.filter(([nr, nc]) => board[nr][nc].state === 'flagged').length;
+    if (flaggedCount !== cell.count) return;
+    for (const [nr, nc] of nbrs) {
+      if (board[nr][nc].state === 'covered') reveal(nr, nc);
+      if (gameOver) return;
+    }
+  };
+
+  const startTimer = () => {
+    seconds = 0;
+    timerEl.textContent = fmt(0);
+    timer = setInterval(() => {
+      seconds++;
+      timerEl.textContent = fmt(seconds);
+    }, 1000);
+  };
+
+  const stopTimer = () => { if (timer) { clearInterval(timer); timer = null; } };
+
+  const checkWin = () => {
+    if (revealedCount === ROWS * COLS - MINES) {
+      gameOver = true;
+      stopTimer();
+      faceEl.textContent = '😎';
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (board[r][c].mine && board[r][c].state !== 'flagged') {
+            board[r][c].state = 'flagged';
+            flagCount++;
+            renderCell(r, c);
+          }
+        }
+      }
+      mineCounterEl.textContent = fmt(0);
+    }
+  };
+
+  const loseGame = (hitR, hitC) => {
+    gameOver = true;
+    stopTimer();
+    faceEl.textContent = '😵';
+    board[hitR][hitC].hit = true;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = board[r][c];
+        if (cell.mine && cell.state !== 'flagged') {
+          cell.state = 'revealed';
+        } else if (!cell.mine && cell.state === 'flagged') {
+          cell.wrongFlag = true;
+          cell.state = 'revealed';
+          cell.textDisplay = '❌';
+        }
+        renderCell(r, c);
+        if (cell.wrongFlag) {
+          cellEls[r][c].textContent = '❌';
+          cellEls[r][c].classList.add('wrong-flag');
+        }
+      }
+    }
+  };
+
+  const handleLeftClick = (r, c) => {
+    if (gameOver) return;
+    const cell = board[r][c];
+    if (cell.state === 'flagged') return;
+    if (firstClick) {
+      firstClick = false;
+      placeMines(r, c);
+      startTimer();
+    }
+    if (cell.state === 'revealed') {
+      chord(r, c);
+    } else {
+      reveal(r, c);
+    }
+    if (!gameOver) checkWin();
+  };
+
+  const handleRightClick = (r, c) => {
+    if (gameOver || firstClick) return;
+    toggleFlag(r, c);
+  };
+
+  const newGame = () => {
+    stopTimer();
+    board = Array.from({ length: ROWS }, () =>
+      Array.from({ length: COLS }, () => ({
+        mine: false, count: 0, state: 'covered', hit: false, wrongFlag: false
+      }))
+    );
+    firstClick = true;
+    gameOver = false;
+    flagCount = 0;
+    revealedCount = 0;
+    seconds = 0;
+    mineCounterEl.textContent = fmt(MINES);
+    timerEl.textContent = fmt(0);
+    faceEl.textContent = '🙂';
+    gridEl.innerHTML = '';
+    cellEls = [];
+    for (let r = 0; r < ROWS; r++) {
+      const row = [];
+      for (let c = 0; c < COLS; c++) {
+        const el = document.createElement('div');
+        el.className = 'cell';
+        el.addEventListener('click', () => handleLeftClick(r, c));
+        el.addEventListener('contextmenu', (e) => { e.preventDefault(); handleRightClick(r, c); });
+        gridEl.appendChild(el);
+        row.push(el);
+      }
+      cellEls.push(row);
+    }
+  };
+
+  faceEl.addEventListener('click', newGame);
+  newGame();
+})();
+</script>
+</body>
+</html>
