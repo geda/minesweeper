@@ -2,13 +2,15 @@
 
 A browser-based implementation of the classic Minesweeper game. The entire game — board, rendering, 3D bevelled cells, timer, mine counter, cascade reveal, chord click — lives in a single self-contained HTML file.
 
-## Run it
+## Play it
 
-Open `minesweeper.html` in any modern browser. No server, no build step, no dependencies.
+Live on GitHub Pages: **https://geda.github.io/minesweeper/**
+
+Or open `index.html` locally in any modern browser. No server, no build step, no dependencies.
 
 ## Files
 
-- **`minesweeper.html`** — the game (HTML + inline CSS + inline JavaScript).
+- **`index.html`** — the game (HTML + inline CSS + inline JavaScript).
 - **`minesweeper-rules.md`** — the full game specification used as input: grid, cell states, adjacency, mine counter, timer, controls, first-click safety, cascade/flood-fill, chord click, win and lose conditions, and edge cases.
 
 ## Then and now
